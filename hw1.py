@@ -18,7 +18,7 @@ from gridgame import *
 # Please do not modify or remove lines 18 and 19.
 
 ##############################################################################################################################
-
+#initialization of the game
 game = ShapePlacementGrid(GUI=False, render_delay_sec=0.0, gs=6, num_colored_boxes=5)  # Increased delay to see window better
 
 # Force create/refresh pygame window on macOS (fixes "Dock icon but no window" issue)
@@ -86,20 +86,19 @@ start = time.time()  # <- do not modify this.
 
 
 
-'''
-
-YOUR CODE HERE
-
-
-'''
-
 # ---------------------------
 # Local search agent (first-choice hill climbing)
+'''
+My agent implements First-Choice Hill Climbing with two variants: 
+1. Sideways moves allowed when the grid is >90% full to escape local optima. 
+2. Random restarts via 'undo' after 30 stalled iterations.
+
+'''
 # ---------------------------
 
 import random
 
-
+#helper function to get the offsets of the shape提取 shape 中所有“1”的位置（相对坐标）。
 def _shape_offsets(shape_arr: np.ndarray):
     """Return list of (dx, dy) for cells where shape_arr[dy, dx] == 1."""
     offsets = []
@@ -110,26 +109,29 @@ def _shape_offsets(shape_arr: np.ndarray):
                 offsets.append((dx, dy))
     return offsets, w, h
 
-
+#helper function to count the violations of the grid
+#logic: check the adjacent cells of the current cell, if the color is the same, then it is a violation
 def _count_violations(grid_arr: np.ndarray) -> int:
     """Count orthogonal-adjacency same-color violations (each violating edge counted once)."""
     gs_local = grid_arr.shape[0]
-    v = 0
+    violate = 0
     for y in range(gs_local):
         for x in range(gs_local):
             c = grid_arr[y, x]
-            if c == -1:
+            if c == -1:#don't violate
                 continue
             if x + 1 < gs_local and grid_arr[y, x + 1] == c:
-                v += 1
+                violate += 1
             if y + 1 < gs_local and grid_arr[y + 1, x] == c:
-                v += 1
-    return v
+                violate += 1
+    return violate #return the number of violations
 
 
 def _available_colors_for_cell(grid_arr: np.ndarray, x: int, y: int) -> set[int]:
     gs_local = grid_arr.shape[0]
+    #mark the cells's color that are already painted
     blocked = set()
+    #check four directions
     if x > 0 and grid_arr[y, x - 1] != -1:
         blocked.add(int(grid_arr[y, x - 1]))
     if x + 1 < gs_local and grid_arr[y, x + 1] != -1:
@@ -138,18 +140,21 @@ def _available_colors_for_cell(grid_arr: np.ndarray, x: int, y: int) -> set[int]
         blocked.add(int(grid_arr[y - 1, x]))
     if y + 1 < gs_local and grid_arr[y + 1, x] != -1:
         blocked.add(int(grid_arr[y + 1, x]))
+    #return the colors that are not blocked
     return set(range(4)) - blocked
 
-
+#pass the pos_x,pos_y to check locations of the color
 def _available_colors_for_shape(grid_arr: np.ndarray, offsets, pos_x: int, pos_y: int) -> set[int]:
     """Intersection of allowable colors across all cells painted by the shape."""
     allowed = set(range(4))
     for dx, dy in offsets:
+        #check the location of the color
         x = pos_x + dx
         y = pos_y + dy
         # Must be empty to place
         if grid_arr[y, x] != -1:
             return set()
+        #do you have any options to paint the color
         allowed &= _available_colors_for_cell(grid_arr, x, y)
         if not allowed:
             return set()
@@ -181,7 +186,14 @@ def _move_to(target_x: int, target_y: int, shape_pos):
         shape_pos, _, _, _, _, _ = game.execute('up')
     return shape_pos
 
-
+'''
+calculate the score of the grid
+violations: the number of violations of the grid
+unfilled: the number of unfilled cells in the grid
+colors_used: the number of colors used in the grid
+shapes_used: the number of shapes used in the grid
+return the score of the grid
+'''
 def _score(grid_arr: np.ndarray, placed_shapes_list) -> int:
     # Lower is better.
     unfilled = int(np.sum(grid_arr == -1))
@@ -294,7 +306,7 @@ while not done and places_made < MAX_TOTAL_PLACES:
         allow_sideways = unfilled_ratio < 0.1 and new_score <= cur_score
         
         if new_score < cur_score or allow_sideways:
-            # Apply the move via execute(): set shape, set color, move, place
+            # if find a better(lower) score,Apply the move via execute(): set shape, set color, move, place
             currentShapeIndex = _set_shape(m["idx"], currentShapeIndex)
             currentColorIndex = _set_color(color, currentColorIndex)
             shapePos = _move_to(px, py, shapePos)
@@ -314,6 +326,7 @@ while not done and places_made < MAX_TOTAL_PLACES:
         continue
 
     # No improving move found: mild random restart by undoing a few shapes
+    #backtracking to the previous state
     stall_iters += 1
     if stall_iters >= RESTART_AFTER_STALL and placedShapes:
         for _ in range(min(UNDO_STEPS_ON_RESTART, len(placedShapes))):
