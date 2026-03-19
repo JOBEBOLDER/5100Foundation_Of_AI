@@ -1,0 +1,7 @@
+decay_rate: 0.99
+num_episodes: 1000
+avg_episode_length: 203.8
+avg_reward: 2729.0
+unique_states_in_Q_table: 4083
+unique_unseen_states_during_eval: 5
+percent_actions_from_unseen_states: 0.59%
